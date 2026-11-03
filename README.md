@@ -7,9 +7,9 @@ The original native SwiftUI app is preserved under [`native/`](native/) if you e
 ## How it works
 
 - A static site (`index.html`, `styles.css`, `app.js`) — no build step, no dependencies.
-- Imported audio files are stored in the browser's **IndexedDB**, positions and book list in **localStorage**.
+- **Your audio files are never uploaded or stored anywhere.** The site only remembers each book's **title** and its **last-played timestamp** (in `localStorage`). When you import a file, it plays directly from your device for that session; re-import the same file later and it resumes from the saved timestamp.
 - Playback uses an HTML `<audio>` element, and the **Media Session API** provides lock-screen / Control Center controls (play, pause, ±10s, scrub) and shows the title.
-- Progress saves every 5 seconds while playing, on pause, on seek/skip/scrub, and when the page is hidden or backgrounded. On reopen, the last book reloads at its saved position, paused and ready.
+- Progress saves every 5 seconds while playing, on pause, on seek/skip/scrub, and when the page is hidden or backgrounded.
 
 ## Set up GitHub Pages
 
@@ -32,8 +32,8 @@ It now opens full-screen like a native app, with its own icon, and audio keeps p
 
 ## Using it
 
-- **Library** (top-right book icon) → **Import** (download icon) → pick one or more `.mp3`/`.m4a`/`.m4b` files. They're copied into the browser's storage.
-- Tap a book to open it; it starts paused at your saved position. Play/pause, back/forward 10s, and drag the scrubber.
+- **Library** (top-right book icon) → **Import** (download icon) → pick one or more `.mp3`/`.m4a`/`.m4b` files. They play directly from your device; nothing is uploaded.
+- Tap a book to open it. If its file was imported this session, it plays; otherwise it shows its saved position and asks you to re-import. Play/pause, back/forward 10s, and drag the scrubber.
 
 ### Accounts
 
@@ -41,11 +41,10 @@ It now opens full-screen like a native app, with its own icon, and audio keeps p
 - A `nikodem` account is created automatically.
 - Progress is matched by the imported file's **title**, so re-importing the same file picks up where you left off.
 
-## Important caveats (browser storage)
+## Important caveats
 
-- **Books live in your browser's storage, not in the repo.** If you clear Safari website data, or use a different browser/device, your imported books and positions are gone. There's no sync (by design).
-- **Storage limits:** iOS Safari caps per-site IndexedDB storage (roughly ~1GB, and the OS may evict data when space is low). Very large `.m4b` files (many hundreds of MB) may fail to import or be evicted. This is fine for typical books, but it's the main tradeoff vs. the native app.
-- **Import is per-device.** Re-import books on each device you use.
+- **Only timestamps are saved** — not your files. Clearing Safari website data, or using a different device, wipes the saved positions (not your audio, which always stays on your device). There's no sync (by design).
+- **Re-import each session:** after you close/reopen the app, you'll need to import the file again (once) to keep listening; it resumes from where you left off.
 
 ## Development
 
@@ -55,4 +54,4 @@ Just edit the static files and push — no tooling required. To test locally:
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`. (IndexedDB works fine over `localhost`.)
+Then open `http://localhost:8000`.

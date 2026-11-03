@@ -1,62 +1,52 @@
 # Bookmark
 
-A minimal, personal-use audiobook player for iOS, built with SwiftUI. Plays `.mp3`, `.m4a`, and `.m4b` files imported from Files, remembers your position per book, and supports background playback + lock screen / Control Center controls.
+A minimal, personal audiobook player that runs as a website you can add to your iPhone's Home Screen (PWA). Plays `.mp3`, `.m4a`, and `.m4b` files you import, remembers your position per book, and gives you lock-screen / Control Center controls. No install, no signing, no 7-day expiry.
 
-No third-party dependencies. iOS 17+, Swift 5.9.
+The original native SwiftUI app is preserved under [`native/`](native/) if you ever want it.
 
-## Project layout
+## How it works
 
-- `project.yml` — XcodeGen spec (regenerate the project with `xcodegen generate`).
-- `Bookmark/BookmarkApp.swift` — app entry point + scene-phase progress saving.
-- `Bookmark/Models.swift` — `Book` model.
-- `Bookmark/Persistence.swift` — progress store (`UserDefaults`) + file storage helpers.
-- `Bookmark/PlayerModel.swift` — playback, background audio, lock-screen/remote commands, saving.
-- `Bookmark/PlayerView.swift` — main player screen.
-- `Bookmark/LibraryView.swift` — book list, import, swipe-to-delete.
+- A static site (`index.html`, `styles.css`, `app.js`) — no build step, no dependencies.
+- Imported audio files are stored in the browser's **IndexedDB**, positions and book list in **localStorage**.
+- Playback uses an HTML `<audio>` element, and the **Media Session API** provides lock-screen / Control Center controls (play, pause, ±10s, scrub) and shows the title.
+- Progress saves every 5 seconds while playing, on pause, on seek/skip/scrub, and when the page is hidden or backgrounded. On reopen, the last book reloads at its saved position, paused and ready.
 
-## Run it on your iPhone (Personal Team, no paid account)
+## Set up GitHub Pages
 
-### 1. Open the project
-- Open `Bookmark.xcodeproj` in Xcode.
-- If you edited `project.yml`, first run `xcodegen generate` (install with `brew install xcodegen`).
+1. Push this repo to GitHub (it's already at `NikodemGazda/Bookmark`).
+2. The repo must be **public** for free GitHub Pages (private repos need GitHub Pro).
+3. In the repo: **Settings → Pages** → under *Build and deployment* set **Source** to `Deploy from a branch`, branch `main`, folder `/ (root)`, then **Save**.
+4. After a minute, the site is live at:
 
-### 2. Sign in with your Apple ID
-- Xcode menu → **Settings → Accounts** → **+** → *Apple ID*, and sign in.
+   ```
+   https://nikodemgazda.github.io/Bookmark/
+   ```
 
-### 3. Choose your Personal Team
-- Select the **Bookmark** target → **Signing & Capabilities**.
-- Tick **Automatically manage signing**.
-- Set **Team** to your name **(Personal Team)**.
-- `DEVELOPMENT_TEAM` is intentionally left blank in the project; you set it here.
+## Add it to your iPhone (Home Screen "app")
 
-### 4. Change the bundle identifier (optional but recommended)
-- Default is `com.example.bookmark`. If you want it unique, edit the **Bundle Identifier** field here, or change `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` and re-run `xcodegen generate`.
+1. On your iPhone, open the URL above in **Safari**.
+2. Tap the **Share** button → **Add to Home Screen**.
+3. Name it (e.g. "Bookmark") and tap **Add**.
 
-### 5. Enable Developer Mode on your iPhone
-- On the phone: **Settings → Privacy & Security → Developer Mode** → toggle **On**, then restart the phone when prompted.
+It now opens full-screen like a native app, with its own icon, and audio keeps playing with the screen locked (start playback first, then lock).
 
-### 6. Connect and run
-- Plug the iPhone into the Mac with a USB cable. Trust the computer if the phone asks.
-- In Xcode, set the run destination to your iPhone (top toolbar), then press **Run** (⌘R).
-- The first build installs the app and may prompt for your Mac login password (keychain access for signing).
+## Using it
 
-### 7. Trust the developer profile (one time)
-- On the phone: **Settings → General → VPN & Device Management**.
-- Tap your Apple ID under *Developer App* and tap **Trust**.
+- **Library** (top-right book icon) → **Import** (download icon) → pick one or more `.mp3`/`.m4a`/`.m4b` files. They're copied into the browser's storage.
+- Tap a book to open it; it starts paused at your saved position. Play/pause, back/forward 10s, and drag the scrubber.
 
-## Free-account limitation: 7-day expiry
+## Important caveats (browser storage)
 
-A free Personal Team signs apps with a **development** profile that expires after **7 days**. After that the app won't open. To renew it:
+- **Books live in your browser's storage, not in the repo.** If you clear Safari website data, or use a different browser/device, your imported books and positions are gone. There's no sync (by design).
+- **Storage limits:** iOS Safari caps per-site IndexedDB storage (roughly ~1GB, and the OS may evict data when space is low). Very large `.m4b` files (many hundreds of MB) may fail to import or be evicted. This is fine for typical books, but it's the main tradeoff vs. the native app.
+- **Import is per-device.** Re-import books on each device you use.
 
-1. Reconnect your iPhone to the Mac.
-2. Open the project in Xcode and press **Run** (⌘R) again.
+## Development
 
-This re-signs and reinstalls over the existing app **without deleting it**, so your imported books and saved positions are preserved. You do *not* need to remove the app or re-import anything. Just remember to do this before the 7 days are up if you want uninterrupted use.
+Just edit the static files and push — no tooling required. To test locally:
 
-## About AirDrop (and why it won't work here)
+```
+python3 -m http.server 8000
+```
 
-You can't install this app by AirDropping an `.ipa` to your iPhone with a free account. AirDrop just copies the file, and iOS will not install a development-signed `.ipa` that way — free-account apps must be installed and re-signed by Xcode (or a sideloading tool like AltStore/Sideloadly, which still carries the same 7-day limit). The reliable path is the Run-from-Xcode flow above, and re-running every 7 days.
-
-## How progress is saved
-
-Position is written to `UserDefaults` (JSON): every ~5 seconds while playing, immediately on pause, on every seek/skip/scrub, on interruption (calls/Siri), and when the app goes to background or inactive. On launch the last-played book loads at its saved position, paused and ready.
+Then open `http://localhost:8000`. (IndexedDB works fine over `localhost`.)

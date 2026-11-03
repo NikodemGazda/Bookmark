@@ -35,6 +35,12 @@ It now opens full-screen like a native app, with its own icon, and audio keeps p
 - **Library** (top-right book icon) → **Import** (download icon) → pick one or more `.mp3`/`.m4a`/`.m4b` files. They're copied into the browser's storage.
 - Tap a book to open it; it starts paused at your saved position. Play/pause, back/forward 10s, and drag the scrubber.
 
+### Accounts
+
+- Tap your name (top-right) to switch or add accounts. Accounts are just a name — no password — and each keeps its own library and progress.
+- A `nikodem` account is created automatically.
+- Progress is matched by the imported file's **title**, so re-importing the same file picks up where you left off.
+
 ## Important caveats (browser storage)
 
 - **Books live in your browser's storage, not in the repo.** If you clear Safari website data, or use a different browser/device, your imported books and positions are gone. There's no sync (by design).

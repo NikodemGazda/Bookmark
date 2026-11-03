@@ -8,10 +8,15 @@ const audio = new Audio();
 audio.preload = "metadata";
 
 let db = null;
-let books = [];       // [{ id, name, size }]
-let positions = {};   // id -> seconds
-let lastPlayedId = null;
-let currentBook = null;
+let state = {
+  accounts: [{ id: "nikodem", name: "nikodem" }],
+  activeAccountId: "nikodem",
+  data: {
+    nikodem: { books: {}, lastPlayed: null },
+  },
+};
+
+let currentBook = null; // title currently loaded
 let isPlaying = false;
 let dragging = false;
 let pendingSeek = null;
@@ -36,22 +41,168 @@ const emptyImportButton = document.getElementById("emptyImportButton");
 const fileInput = document.getElementById("fileInput");
 const bookList = document.getElementById("bookList");
 const emptyState = document.getElementById("emptyState");
+const accountButton = document.getElementById("accountButton");
+const accountNameEl = document.getElementById("accountName");
+const accountPanel = document.getElementById("accountPanel");
+const accountList = document.getElementById("accountList");
+const addAccountButton = document.getElementById("addAccountButton");
+const addAccountForm = document.getElementById("addAccountForm");
+const accountNameInput = document.getElementById("accountNameInput");
+const toast = document.getElementById("toast");
 
 init();
 
 async function init() {
   db = await openDB();
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
   loadState();
-
+  ensureActiveAccount();
   setupAudioEvents();
   setupMediaSession();
-
   renderLibrary();
+  renderAccounts();
+  updateAccountUI();
 
-  if (lastPlayedId) {
-    const book = books.find((b) => b.id === lastPlayedId);
-    if (book) await loadBook(book, false);
+  const d = activeData();
+  if (d.lastPlayed && d.books[d.lastPlayed]) {
+    await loadBook(d.lastPlayed, false);
   }
+}
+
+// ---------- Accounts ----------
+
+function ensureActiveAccount() {
+  if (!state.accounts.length) {
+    state.accounts = [{ id: "nikodem", name: "nikodem" }];
+  }
+  if (!state.accounts.some((a) => a.id === state.activeAccountId)) {
+    state.activeAccountId = state.accounts[0].id;
+  }
+  if (!state.data[state.activeAccountId]) {
+    state.data[state.activeAccountId] = { books: {}, lastPlayed: null };
+  }
+  saveState();
+}
+
+function activeAccount() {
+  return state.accounts.find((a) => a.id === state.activeAccountId) || state.accounts[0];
+}
+
+function activeData() {
+  const id = state.activeAccountId;
+  if (!state.data[id]) state.data[id] = { books: {}, lastPlayed: null };
+  return state.data[id];
+}
+
+function addAccount(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
+  state.accounts.push({ id, name: trimmed });
+  state.data[id] = { books: {}, lastPlayed: null };
+  switchAccount(id);
+}
+
+function switchAccount(id) {
+  stopAudio();
+  currentBook = null;
+  bookTitle.textContent = "No book loaded";
+  updateTimeUI();
+  updatePlayButton();
+
+  state.activeAccountId = id;
+  if (!state.data[id]) state.data[id] = { books: {}, lastPlayed: null };
+  saveState();
+
+  renderAccounts();
+  renderLibrary();
+  updateAccountUI();
+  updateMediaSession();
+
+  const d = activeData();
+  if (d.lastPlayed && d.books[d.lastPlayed]) {
+    loadBook(d.lastPlayed, false);
+  }
+}
+
+function updateAccountUI() {
+  accountNameEl.textContent = activeAccount().name;
+}
+
+function renderAccounts() {
+  accountList.innerHTML = "";
+  for (const acc of state.accounts) {
+    const row = document.createElement("div");
+    row.className = "account-row";
+
+    const avatar = document.createElement("div");
+    avatar.className = "account-avatar";
+    avatar.textContent = (acc.name[0] || "?").toUpperCase();
+
+    const name = document.createElement("div");
+    name.className = "account-row-name";
+    name.textContent = acc.name;
+
+    row.appendChild(avatar);
+    row.appendChild(name);
+
+    if (acc.id === state.activeAccountId) {
+      const check = document.createElement("div");
+      check.className = "book-check";
+      check.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+      row.appendChild(check);
+    }
+
+    row.addEventListener("click", () => {
+      closeAccountPanel();
+      switchAccount(acc.id);
+    });
+
+    accountList.appendChild(row);
+  }
+}
+
+// ---------- State persistence ----------
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.accounts && parsed.accounts.length) {
+        state = parsed;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to load state", e);
+  }
+  if (!state.accounts) state.accounts = [];
+  if (!state.data) state.data = {};
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn("Failed to save state", e);
+  }
+}
+
+function savePosition() {
+  if (!currentBook) return;
+  const d = activeData();
+  if (!d.books[currentBook]) d.books[currentBook] = {};
+  d.books[currentBook].position = finiteCurrentTime();
+  d.lastPlayed = currentBook;
+  saveState();
+}
+
+function finiteCurrentTime() {
+  const t = audio.currentTime;
+  return Number.isFinite(t) ? t : activeData().books[currentBook]?.position || 0;
 }
 
 // ---------- IndexedDB ----------
@@ -67,6 +218,10 @@ function openDB() {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+function blobKey(title) {
+  return state.activeAccountId + "::" + title;
 }
 
 function putBlob(id, blob) {
@@ -94,45 +249,6 @@ function deleteBlob(id) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
-}
-
-// ---------- State persistence ----------
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STATE_KEY);
-    if (raw) {
-      const state = JSON.parse(raw);
-      books = state.books || [];
-      positions = state.positions || {};
-      lastPlayedId = state.lastPlayedId || null;
-    }
-  } catch (e) {
-    console.warn("Failed to load state", e);
-  }
-}
-
-function saveState() {
-  try {
-    localStorage.setItem(
-      STATE_KEY,
-      JSON.stringify({ books, positions, lastPlayedId })
-    );
-  } catch (e) {
-    console.warn("Failed to save state", e);
-  }
-}
-
-function savePosition() {
-  if (!currentBook) return;
-  positions[currentBook.id] = finiteCurrentTime();
-  lastPlayedId = currentBook.id;
-  saveState();
-}
-
-function finiteCurrentTime() {
-  const t = audio.currentTime;
-  return Number.isFinite(t) ? t : (positions[currentBook?.id] || 0);
 }
 
 // ---------- Audio events ----------
@@ -173,7 +289,9 @@ function setupAudioEvents() {
     isPlaying = false;
     stopSaveTimer();
     if (currentBook) {
-      positions[currentBook.id] = audio.duration || positions[currentBook.id] || 0;
+      const d = activeData();
+      if (!d.books[currentBook]) d.books[currentBook] = {};
+      d.books[currentBook].position = audio.duration || d.books[currentBook].position || 0;
       saveState();
     }
     updatePlayButton();
@@ -184,6 +302,7 @@ function setupAudioEvents() {
     isPlaying = false;
     stopSaveTimer();
     updatePlayButton();
+    showToast("Couldn't play this file.");
   });
 
   window.addEventListener("pagehide", savePosition);
@@ -194,19 +313,24 @@ function setupAudioEvents() {
 
 // ---------- Playback ----------
 
-async function loadBook(book, autoplay) {
-  const blob = await getBlob(book.id);
-  if (!blob) return;
+async function loadBook(title, autoplay) {
+  const key = blobKey(title);
+  const blob = await getBlob(key);
+  if (!blob) {
+    showToast("Audio data not found for \u201c" + title + "\u201d. Try importing it again.");
+    return;
+  }
 
   if (audio.src) URL.revokeObjectURL(audio.src);
   audio.src = URL.createObjectURL(blob);
 
-  currentBook = book;
-  lastPlayedId = book.id;
+  currentBook = title;
+  const d = activeData();
+  d.lastPlayed = title;
   saveState();
 
-  pendingSeek = positions[book.id] || 0;
-  bookTitle.textContent = book.name;
+  pendingSeek = d.books[title]?.position || 0;
+  bookTitle.textContent = title;
   updatePlayButton();
   renderLibrary();
   updateMediaSession();
@@ -218,7 +342,7 @@ async function loadBook(book, autoplay) {
 
 function togglePlay() {
   if (!currentBook) return;
-  if (audio.paused) audio.play().catch(() => {});
+  if (audio.paused) audio.play().catch(() => showToast("Playback blocked."));
   else audio.pause();
 }
 
@@ -237,6 +361,16 @@ function seekTo(seconds, save) {
   audio.currentTime = clamped;
   if (save) savePosition();
   updateTimeUI();
+}
+
+function stopAudio() {
+  audio.pause();
+  stopSaveTimer();
+  isPlaying = false;
+  if (audio.src) URL.revokeObjectURL(audio.src);
+  audio.removeAttribute("src");
+  audio.load();
+  updatePlayButton();
 }
 
 // ---------- UI ----------
@@ -275,23 +409,37 @@ function formatTime(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+let toastTimer = null;
+function showToast(message) {
+  toast.textContent = message;
+  toast.hidden = false;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, 4000);
+}
+
 function showPlayer() {
+  closeAccountPanel();
   libraryView.hidden = true;
   playerView.hidden = false;
 }
 
 function showLibrary() {
+  closeAccountPanel();
   playerView.hidden = true;
   libraryView.hidden = false;
 }
 
 function renderLibrary() {
   bookList.innerHTML = "";
-  const hasBooks = books.length > 0;
+  const d = activeData();
+  const titles = Object.keys(d.books);
+  const hasBooks = titles.length > 0;
   bookList.hidden = !hasBooks;
   emptyState.hidden = hasBooks;
 
-  for (const book of books) {
+  for (const title of titles) {
     const row = document.createElement("div");
     row.className = "book-row";
 
@@ -300,16 +448,16 @@ function renderLibrary() {
 
     const name = document.createElement("div");
     name.className = "book-name";
-    name.textContent = book.name;
+    name.textContent = title;
 
     const position = document.createElement("div");
     position.className = "book-position";
-    position.textContent = formatTime(positions[book.id] || 0);
+    position.textContent = formatTime(d.books[title]?.position || 0);
 
     info.appendChild(name);
     info.appendChild(position);
 
-    if (currentBook && currentBook.id === book.id) {
+    if (currentBook === title) {
       const check = document.createElement("div");
       check.className = "book-check";
       check.innerHTML =
@@ -324,13 +472,13 @@ function renderLibrary() {
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
     del.addEventListener("click", (e) => {
       e.stopPropagation();
-      deleteBook(book.id);
+      deleteBook(title);
     });
 
     row.appendChild(info);
     row.appendChild(del);
     row.addEventListener("click", () => {
-      loadBook(book, false).then(showPlayer);
+      loadBook(title, false).then(showPlayer);
     });
 
     bookList.appendChild(row);
@@ -339,43 +487,82 @@ function renderLibrary() {
 
 // ---------- Library ----------
 
-async function deleteBook(id) {
-  const wasCurrent = currentBook && currentBook.id === id;
-  books = books.filter((b) => b.id !== id);
-  delete positions[id];
-  if (lastPlayedId === id) {
-    lastPlayedId = books.length ? books[0].id : null;
+async function deleteBook(title) {
+  const d = activeData();
+  const wasCurrent = currentBook === title;
+  delete d.books[title];
+  if (d.lastPlayed === title) {
+    d.lastPlayed = Object.keys(d.books)[0] || null;
   }
   if (wasCurrent) {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
+    stopAudio();
     currentBook = null;
     bookTitle.textContent = "No book loaded";
     updateTimeUI();
     updatePlayButton();
   }
-  await deleteBlob(id);
+  await deleteBlob(blobKey(title));
   saveState();
   renderLibrary();
 }
 
-function importFiles(fileList) {
+function mimeForName(name) {
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  const map = {
+    mp3: "audio/mpeg",
+    m4a: "audio/mp4",
+    m4b: "audio/mp4",
+    aac: "audio/aac",
+    wav: "audio/wav",
+    flac: "audio/flac",
+    ogg: "audio/ogg",
+  };
+  return map[ext] || "audio/mpeg";
+}
+
+async function importFiles(fileList) {
   const files = Array.from(fileList).filter(
-    (f) => /\.(mp3|m4a|m4b)$/i.test(f.name) || f.type.startsWith("audio/")
+    (f) => /\.(mp3|m4a|m4b|aac|wav|flac|ogg)$/i.test(f.name) || f.type.startsWith("audio/")
   );
   if (!files.length) return;
 
-  (async () => {
-    for (const file of files) {
-      const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
-      await putBlob(id, file);
-      books.push({ id, name: file.name.replace(/\.[^.]+$/, ""), size: file.size });
-      positions[id] = 0;
+  const d = activeData();
+
+  if (navigator.storage && navigator.storage.estimate) {
+    try {
+      const est = await navigator.storage.estimate();
+      const available = (est.quota || 0) - (est.usage || 0);
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      if (est.quota && totalSize > available) {
+        showToast("This file may be too large for this device\u2019s available storage.");
+      }
+    } catch (e) {}
+  }
+
+  for (const file of files) {
+    const title = file.name.replace(/\.[^.]+$/, "");
+    const type = file.type && file.type.startsWith("audio/") ? file.type : mimeForName(file.name);
+    const blob = new Blob([file], { type });
+
+    try {
+      await putBlob(blobKey(title), blob);
+    } catch (err) {
+      console.error("Store failed", err);
+      showToast(
+        "Couldn\u2019t store \u201c" + title + "\u201d. Not enough storage space on this device."
+      );
+      continue;
     }
-    saveState();
-    renderLibrary();
-  })();
+
+    if (!d.books[title]) {
+      d.books[title] = { position: 0 };
+    }
+    d.books[title].size = file.size;
+  }
+
+  saveState();
+  renderLibrary();
+  showToast(files.length === 1 ? "Imported." : "Imported " + files.length + " files.");
 }
 
 // ---------- Media Session (lock screen / Control Center) ----------
@@ -401,8 +588,8 @@ function updateMediaSession() {
 
   try {
     ms.metadata = new MediaMetadata({
-      title: currentBook ? currentBook.name : "Bookmark",
-      artist: "Audiobook",
+      title: currentBook || "Bookmark",
+      artist: activeAccount().name,
       album: "Bookmark",
       artwork: [{ src: "icons/icon-512.png", sizes: "512x512", type: "image/png" }],
     });
@@ -459,4 +646,25 @@ emptyImportButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", () => {
   importFiles(fileInput.files);
   fileInput.value = "";
+});
+
+accountButton.addEventListener("click", () => {
+  accountPanel.hidden = false;
+});
+accountPanel.addEventListener("click", (e) => {
+  if (e.target === accountPanel) closeAccountPanel();
+});
+function closeAccountPanel() {
+  accountPanel.hidden = true;
+  addAccountForm.hidden = true;
+  accountNameInput.value = "";
+}
+addAccountButton.addEventListener("click", () => {
+  addAccountForm.hidden = false;
+  accountNameInput.focus();
+});
+addAccountForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  addAccount(accountNameInput.value);
+  closeAccountPanel();
 });

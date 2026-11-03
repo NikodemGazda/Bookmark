@@ -18,9 +18,15 @@
   <main id="playerView" class="view">
     <header class="topbar">
       <span class="app-title">Bookmark</span>
-      <button id="libraryButton" class="icon-button" aria-label="Library">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      </button>
+      <div class="topbar-actions">
+        <button id="libraryButton" class="icon-button" aria-label="Library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </button>
+        <button id="accountButton" class="account-button" aria-label="Account">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span id="accountName" class="account-name">nikodem</span>
+        </button>
+      </div>
     </header>
 
     <section class="player">
@@ -68,6 +74,24 @@
       <button id="emptyImportButton" class="primary-button">Import an audiobook</button>
     </div>
   </section>
+
+  <div id="accountPanel" class="overlay" hidden>
+    <div class="panel" role="dialog" aria-label="Accounts">
+      <div class="panel-header">
+        <h2>Accounts</h2>
+        <button id="addAccountButton" class="icon-button accent" aria-label="Add account">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        </button>
+      </div>
+      <form id="addAccountForm" class="add-account-form" hidden>
+        <input id="accountNameInput" type="text" placeholder="Name" maxlength="30" autocomplete="off" />
+        <button type="submit" class="primary-button small">Add</button>
+      </form>
+      <div id="accountList" class="account-list"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
 
   <input id="fileInput" type="file" accept=".mp3,.m4a,.m4b,audio/*" multiple hidden />
 

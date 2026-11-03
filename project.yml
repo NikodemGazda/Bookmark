@@ -1,0 +1,32 @@
+name: Bookmark
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+targets:
+  Bookmark:
+    type: application
+    platform: iOS
+    sources:
+      - Bookmark
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.bookmark
+        PRODUCT_NAME: Bookmark
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    info:
+      path: Bookmark/Info.plist
+      properties:
+        CFBundleDisplayName: Bookmark
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - audio
